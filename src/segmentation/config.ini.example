@@ -1,0 +1,7 @@
+[default]
+DataDir = /path/to/data/directory
+WorkspaceDir = /path/to/nnunet/workspace/directory
+
+[myprofile]
+DataDir = /path/to/other/data/directory
+WorkspaceDir = /path/to/other/nnunet/workspace/directory

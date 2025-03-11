@@ -1,0 +1,5 @@
+[default]
+DataDir = /path/to/data/directory
+
+[myprofile]
+DataDir = /path/to/other/data/directory

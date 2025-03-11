@@ -1,0 +1,34 @@
+num_stim                =       3
+
+bidomain                =       1
+
+tend                    =       1
+
+stimulus[0].stimtype    =       3
+
+stimulus[1].stimtype    =       2
+stimulus[1].strength    =       0.5
+stimulus[1].duration    =       1
+stimulus[2].stimtype    =       2
+stimulus[2].strength    =       1
+stimulus[2].duration    =       1
+
+
+timedt  =       1.0
+spacedt =       1.0
+
+dt              =       20
+vm_per_phie     =       1
+parab_solve     =       1
+cg_tol_ellip    =       2.8e-6
+
+num_gregions    =       1
+
+gregion[0].num_IDs      =       1
+gregion[0].ID[0]        =       0
+gregion[0].g_il         =       1
+gregion[0].g_it         =       1
+gregion[0].g_el         =       1
+gregion[0].g_et         =       1
+
+

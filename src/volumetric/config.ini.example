@@ -1,0 +1,7 @@
+[default]
+DataDir = /path/to/data/directory
+CarpBinDir = /path/to/opencarp/bin/directory
+
+[myprofile]
+DataDir = /path/to/other/data/directory
+CarpBinDir = /path/to/other/opencarp/bin/directory

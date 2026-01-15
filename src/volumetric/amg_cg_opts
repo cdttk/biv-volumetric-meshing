@@ -1,0 +1,6 @@
+-ksp_type cg
+-pc_type hypre
+-pc_hypre_type boomeramg
+-pc_hypre_boomeramg_max_iter 1
+-pc_hypre_boomeramg_strong_threshold 0.0
+-options_left

@@ -1,0 +1,15 @@
+cvxopt
+line_profiler
+matplotlib
+nibabel
+nltk
+nnunetv2
+numpy
+opencv-python
+pandas
+plotly
+pydicom
+pyvista
+scikit-image
+scipy
+torch

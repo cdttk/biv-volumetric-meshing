@@ -186,12 +186,13 @@ class BiventricularModel():
         coordinates
         '''
         if not os.path.exists(control_mesh_dir):
-            ValueError('Invalid directory name')
+            raise ValueError('Invalid directory name')
 
         self.label = label
         model_file = os.path.join(control_mesh_dir,"model.txt")
+
         if not os.path.exists(model_file):
-            ValueError('Missing model.txt file')
+            raise ValueError('Missing model.txt file')
         self.control_mesh = (pd.read_table
                              (model_file, delim_whitespace=True, header=None, engine = 'c')).values 
 
@@ -201,7 +202,7 @@ class BiventricularModel():
         subdivision_matrix_file = os.path.join(control_mesh_dir,
                                                "subdivision_matrix.txt")
         if not os.path.exists(subdivision_matrix_file):
-            ValueError('Missing subdivision_matrix.txt')
+            raise ValueError('Missing subdivision_matrix.txt')
 
         self.matrix = (pd.read_table(subdivision_matrix_file,
                                      delim_whitespace=True,
@@ -216,7 +217,7 @@ class BiventricularModel():
 
         et_index_file = os.path.join(control_mesh_dir,'ETIndicesSorted.txt')
         if not os.path.exists(et_index_file):
-            ValueError('Missing ETIndicesSorted.txt file')
+            raise ValueError('Missing ETIndicesSorted.txt file')
         self.et_indices = (pd.read_table(et_index_file, delim_whitespace=True,
                                             header=None, engine = 'c')).values.astype(int)-1
         ''' 11760x3 array[int] of elements connectivity (n1,n2,n3) for each face.'''
@@ -224,14 +225,14 @@ class BiventricularModel():
         #et_index_thruWall_file = os.path.join(control_mesh_dir, 'ETIndicesThruWall.txt') #RB addition for MyoMass calc
         et_index_thruWall_file = os.path.join(control_mesh_dir, 'epi_to_septum_ETindices.txt')
         if not os.path.exists(et_index_thruWall_file):
-            ValueError('Missing ETIndicesThruWall.txt file for myocardial mass calculation')
+            raise ValueError('Missing ETIndicesThruWall.txt file for myocardial mass calculation')
         self.et_indices_thruWall = (
             pd.read_table(et_index_thruWall_file, delim_whitespace=True,
                           header=None)).values.astype(int)-1
 
         et_index_EpiLVRV_file = os.path.join(control_mesh_dir, 'ETIndicesEpiRVLV.txt') #RB addition for MyoMass calc
         if not os.path.exists(et_index_EpiLVRV_file):
-            ValueError('Missing ETIndicesEpiRVLV.txt file for myocardial mass calculation')
+            raise ValueError('Missing ETIndicesEpiRVLV.txt file for myocardial mass calculation')
         self.et_indices_EpiLVRV = (
             pd.read_table(et_index_EpiLVRV_file, delim_whitespace=True,
                           header=None, engine = 'c')).values.astype(int)-1
@@ -239,7 +240,7 @@ class BiventricularModel():
 
         GTSTSG_x_file = os.path.join(control_mesh_dir,'GTSTG_x.txt')
         if not os.path.exists(GTSTSG_x_file):
-            ValueError(' Missing GTSTG_x.txt file')
+            raise ValueError(' Missing GTSTG_x.txt file')
         self.GTSTSG_x = (
             pd.read_table(GTSTSG_x_file, delim_whitespace=True,
                           header=None, engine = 'c')).values.astype(float)
@@ -249,7 +250,7 @@ class BiventricularModel():
 
         GTSTSG_y_file = os.path.join(control_mesh_dir,'GTSTG_y.txt')
         if not os.path.exists(GTSTSG_y_file):
-            ValueError(' Missing GTSTG_y.txt file')
+            raise ValueError(' Missing GTSTG_y.txt file')
         self.GTSTSG_y = (
             pd.read_table(GTSTSG_y_file, delim_whitespace=True,
                           header=None, engine = 'c')).values.astype(float)
@@ -258,7 +259,7 @@ class BiventricularModel():
 
         GTSTSG_z_file = os.path.join(control_mesh_dir,'GTSTG_z.txt')
         if not os.path.exists(GTSTSG_z_file):
-            ValueError(' Missing GTSTG_z.txt file')
+            raise ValueError(' Missing GTSTG_z.txt file')
         self.GTSTSG_z = (
             pd.read_table(GTSTSG_z_file, delim_whitespace=True,
                           header=None, engine = 'c')).values.astype(float)
@@ -268,7 +269,7 @@ class BiventricularModel():
         etVertexElementNum_file = os.path.join(control_mesh_dir,
                                                'etVertexElementNum.txt')
         if not os.path.exists(etVertexElementNum_file):
-            ValueError('Missing etVertexElementNum.txt file')
+            raise ValueError('Missing etVertexElementNum.txt file')
         self.et_vertex_element_num = \
             (pd.read_table(etVertexElementNum_file,
                            delim_whitespace=True,header=None, engine = 'c')).values[:,0].astype(
@@ -280,7 +281,7 @@ class BiventricularModel():
 
         mBder_x_file = os.path.join(control_mesh_dir,'mBder_x.txt')
         if not os.path.exists(mBder_x_file):
-            ValueError('Missing mBder_x.file')
+            raise ValueError('Missing mBder_x.file')
         self.mBder_dx = (
             pd.read_table(mBder_x_file, delim_whitespace=True,
                           header=None, engine = 'c')).values.astype(float)
@@ -289,7 +290,7 @@ class BiventricularModel():
         '''
         mBder_y_file = os.path.join(control_mesh_dir,'mBder_y.txt')
         if not os.path.exists(mBder_y_file):
-            ValueError('Missing mBder_y.file')
+            raise ValueError('Missing mBder_y.file')
         self.mBder_dy = (
             pd.read_table(mBder_y_file, delim_whitespace=True,
                           header=None, engine = 'c')).values.astype(float)
@@ -299,7 +300,7 @@ class BiventricularModel():
 
         mBder_z_file = os.path.join(control_mesh_dir,'mBder_z.txt')
         if not os.path.exists(mBder_z_file):
-            ValueError('Missing mBder_z.file')
+            raise ValueError('Missing mBder_z.file')
         self.mBder_dz = (
             pd.read_table(mBder_z_file, delim_whitespace=True,
                           header=None, engine = 'c')).values.astype(float)
@@ -309,7 +310,7 @@ class BiventricularModel():
 
         jac11_file = os.path.join(control_mesh_dir,'J11.txt')
         if not os.path.exists(jac11_file):
-            ValueError('Missing J11.txt file')
+            raise ValueError('Missing J11.txt file')
 
         self.Jac11 = (pd.read_table(jac11_file, delim_whitespace=True,
                                     header=None, engine = 'c')).values.astype(float)
@@ -321,7 +322,7 @@ class BiventricularModel():
 
         jac12_file = os.path.join(control_mesh_dir, 'J12.txt')
         if not os.path.exists(jac12_file):
-            ValueError('Missing J12.txt file')
+            raise ValueError('Missing J12.txt file')
 
         self.Jac12 = (pd.read_table(jac12_file, delim_whitespace=True,
                                     header=None, engine = 'c')).values.astype(float)
@@ -331,7 +332,7 @@ class BiventricularModel():
         '''
         jac13_file = os.path.join(control_mesh_dir, 'J13.txt')
         if not os.path.exists(jac13_file):
-            ValueError('Missing J13.txt file')
+            raise ValueError('Missing J13.txt file')
 
         self.Jac13 = (pd.read_table(jac13_file, delim_whitespace=True,
                                     header=None, engine = 'c')).values.astype(float)
@@ -342,7 +343,7 @@ class BiventricularModel():
         '''
         basic_matrix_file = os.path.join(control_mesh_dir,'basis_matrix.txt')
         if not os.path.exists(basic_matrix_file):
-            ValueError('Missing basis_matrix.txt file')
+            raise ValueError('Missing basis_matrix.txt file')
         self.basis_matrix = (pd.read_table(basic_matrix_file,
                           delim_whitespace=True,header=None, engine = 'c')).values.astype(
             float)  #
@@ -356,7 +357,7 @@ class BiventricularModel():
 
         et_vertex_xi_file = os.path.join(control_mesh_dir,"etVertexXi.txt")
         if not os.path.exists(et_vertex_xi_file):
-            ValueError('Missing etVertexXi.txt file')
+            raise ValueError('Missing etVertexXi.txt file')
         self.et_vertex_xi = (pd.read_table(
             et_vertex_xi_file, delim_whitespace=True, header=None, engine = 'c')).values
         ''' `numSurfaceNodes`x3 array[float] of local xi position (xi1,xi2,
@@ -366,7 +367,7 @@ class BiventricularModel():
 
         b_spline_file = os.path.join(control_mesh_dir, "control_points_patches.txt")
         if not os.path.exists(b_spline_file):
-            ValueError('Missing control_points_patches.txt file')
+            raise ValueError('Missing control_points_patches.txt file')
         self.b_spline = (pd.read_table(
             b_spline_file, delim_whitespace=True, header=None, engine = 'c')).values.astype(int)-1
         ''' numSurfaceNodesX32 array[int] of 32 control points which need to be 
@@ -374,7 +375,7 @@ class BiventricularModel():
         '''
         boundary_file = os.path.join(control_mesh_dir,"boundary.txt")
         if not os.path.exists(boundary_file):
-            ValueError('Missing boundary.txt file')
+            raise ValueError('Missing boundary.txt file')
         self.boundary = (pd.read_table(
             boundary_file, delim_whitespace=True, header=None, engine = 'c')).values.astype(int)
         ''' boundary'''
@@ -382,14 +383,14 @@ class BiventricularModel():
         control_ef_file = os.path.join(control_mesh_dir,
                                        "control_mesh_connectivity.txt")
         if not os.path.exists(control_ef_file):
-            ValueError('Missing control_mesh_connectivity.txt file')
+            raise ValueError('Missing control_mesh_connectivity.txt file')
         self.control_et_indices = (pd.read_table(
             control_ef_file, delim_whitespace=True, header=None, engine = 'c')).values.astype(int)-1
         ''' (K,8) matrix of control mesh connectivity'''
 
         phantom_points_file = os.path.join(control_mesh_dir, "phantom_points.txt")
         if not os.path.exists(phantom_points_file):
-            ValueError('Missing phantom_points.txt file')
+            raise ValueError('Missing phantom_points.txt file')
         self.phantom_points = (pd.read_table(
             phantom_points_file, delim_whitespace=True, header=None, engine = 'c')).values.astype(float)
         ''' Some surface nodes are not needed for the 
@@ -404,7 +405,7 @@ class BiventricularModel():
         patch_coordinates_file = os.path.join(control_mesh_dir,
                                               "patch_coordinates.txt")
         if not os.path.exists(patch_coordinates_file):
-            ValueError('Missing patch_coordinates.txt file')
+            raise ValueError('Missing patch_coordinates.txt file')
         self.patch_coordinates = (pd.read_table(
             patch_coordinates_file, delim_whitespace=True, header=None, engine = 'c')).values
         '''local patch coordinates. 
@@ -426,7 +427,7 @@ class BiventricularModel():
         '''
         fraction_file = os.path.join(control_mesh_dir, "fraction.txt")
         if not os.path.exists(fraction_file):
-            ValueError('Missing fraction.txt file')
+            raise ValueError('Missing fraction.txt file')
         self.fraction = (pd.read_table(
             fraction_file, delim_whitespace=True, header=None, engine = 'c')).values
         '''`numSurfaceNodes`x1 vector[int] subdivision level of the 
@@ -438,7 +439,7 @@ class BiventricularModel():
                                          "local_matrix.txt")
 
         if not os.path.exists(local_matrix_file):
-            ValueError('Missing local_matrix.txt file')
+            raise ValueError('Missing local_matrix.txt file')
         self.local_matrix = (pd.read_table(
             local_matrix_file, delim_whitespace=True, header=None, engine = 'c')).values
 
@@ -784,8 +785,7 @@ class BiventricularModel():
                                    ( data_set.contour_type == ContourType.SAX_RV_FREEWALL), :]))
 
         if len(point_proj) == 0:
-            ValueError('Missing contours in update_pose_and_scale')
-            return
+            raise ValueError('Missing contours in update_pose_and_scale')
 
 
         tempd = [np.dot(xaxis, p) for p in (point_proj - tempOrigin)]

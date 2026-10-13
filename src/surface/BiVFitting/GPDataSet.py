@@ -10,9 +10,6 @@ from . import fitting_tools as tools
 import re
 from .surface_enum import *
 from .Frame import *
-import matplotlib.pyplot as plt
-from mpl_toolkits.mplot3d import Axes3D
-from . import visualization as viewer
 from scipy.spatial import ckdtree
   
 SAMPLED_CONTOUR_TYPES = [ContourType.LAX_LV_ENDOCARDIAL,

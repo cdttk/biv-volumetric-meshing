@@ -16,6 +16,9 @@ from nibabel.affines import apply_affine
 from scipy.spatial import distance
 from skimage import measure
 
+from skimage.morphology import medial_axis
+from scipy.ndimage import generic_filter
+
 #mpl.use('TkAgg')
 np.set_printoptions(suppress=True, floatmode="fixed", precision=2)
 
@@ -53,10 +56,10 @@ def auto_pick_es_frame(segs: list[nib.nifti1.Nifti1Image], lv_label: int = 1):
 
     num_timeframes = sax_fdata.shape[3]
 
-    if len(lax_fdata) != 3:
-        logger.error("In auto_pick_es_frame: The number of LAX views is different than 3."
-                      " Skipping instance.")
-        return -1
+    #if len(lax_fdata) != 3:
+    #    logger.error("In auto_pick_es_frame: The number of LAX views is different than 3."
+    #                  " Skipping instance.")
+    #    return -1
     if sax_fdata.shape[2] < 5:
         logger.error("In auto_pick_es_frame: SAX has less than 5 slices. Skipping instance.")
         return -1
@@ -539,6 +542,17 @@ def get_contours_and_landmarks_4ch(seg: npt.NDArray[np.uint8], label_defs: dict,
                         f" points. Slice discarded.")
         return None
 
+    # Find mitral valve endpoints (furthest apart points)
+    distances = distance.cdist(mv_contour, mv_contour)
+    mv_contour_ends = mv_contour[np.unravel_index(distances.argmax(), distances.shape), :]
+    
+    # Calculate mitral valve midpoint
+    mv_mid = np.mean([mv_contour_ends[0], mv_contour_ends[1]], axis=0)
+    # Define apex as the point on LV epi contour furthest from mv_mid
+    distances = distance.cdist(lv_epi_contour, [mv_mid])
+    apex = lv_epi_contour[distances.argmax(), :]
+
+
     # Now that we have the mv_contour, we want to determine the 2 anatomical end-points
     # on the contour. For 4-chamber view, selecting the left-most and right-most points
     # should work fine in most cases.
@@ -546,7 +560,7 @@ def get_contours_and_landmarks_4ch(seg: npt.NDArray[np.uint8], label_defs: dict,
 
     mv_left = mv_contour[np.argmin(mv_contour_anatomical, axis=0)[0], :]
     mv_right = mv_contour[np.argmax(mv_contour_anatomical, axis=0)[0], :]
-
+    
     # Get the RV contour (only endo will be extracted from the RV since epi is not segmented)
     rv_seg = (seg == label_defs['RV']).astype(np.uint8)
     rv_seg = get_largest_cc(rv_seg).astype(np.uint8)
@@ -627,7 +641,7 @@ def get_contours_and_landmarks_4ch(seg: npt.NDArray[np.uint8], label_defs: dict,
     logger.info(" 4Ch slice passed QC.")
 
     return lv_endo_contour, lv_epi_contour, rv_septum_contour, rv_free_wall_contour, \
-        mv_left, mv_right, tv_left, tv_right
+        mv_left, mv_right, tv_left, tv_right, apex
 
 
 def get_contours_sax_slice(seg: npt.NDArray[np.uint8], label_defs: dict, slice_id: int):
@@ -722,6 +736,20 @@ def get_contours_sax_slice(seg: npt.NDArray[np.uint8], label_defs: dict, slice_i
         logger.warning(f"RV Septum - FW separation failed on SAX slice {slice_id}")
         return None
 
+    # Compute RV insertion points using skeletonization
+    def line_ends(P: npt.NDArray) -> int:
+        """Central pixel and just one other must be set to be a line end"""
+        return 255 * ((P[4] == 255) and np.sum(P) == 510)
+    
+    rv_septum_seg = np.zeros_like(lv_epi_seg)
+    for point in rv_septum_contour:
+        rv_septum_seg[point[0], point[1]] = 1
+
+    # Skeletonize and find line ends
+    skel = (medial_axis(rv_septum_seg) * 255).astype(np.uint8)
+    result = generic_filter(skel, line_ends, (3, 3))
+    rv_insert_contour = np.array(np.where(result > 0)).T
+
     # Find points on the lv_epi_contour that neighbor the RV.
     lv_epi_rv_neighbors, _ = split_closed_contour_wrt_to_seg(lv_epi_contour, rv_seg, rv_contour)
 
@@ -739,7 +767,7 @@ def get_contours_sax_slice(seg: npt.NDArray[np.uint8], label_defs: dict, slice_i
 
     logger.info(f" SAX slice {slice_id} passed QC.")
 
-    return lv_endo_contour, lv_epi_contour, rv_septum_contour, rv_free_wall_contour
+    return lv_endo_contour, lv_epi_contour, rv_septum_contour, rv_free_wall_contour, rv_insert_contour
 
 
 def basic_contours_qc(contours, contour_name: str, view_name: str, min_points: int,
@@ -1317,15 +1345,15 @@ def main():
 
             if os.path.isfile(lax_2ch_filename):
                 lax_2ch_seg_nifti = nib.load(lax_2ch_filename)
-            else:
-                logger.error("LAX 2 chamber file not found. Skipping instance.")
-                continue
+            #else:
+            #    logger.error("LAX 2 chamber file not found. Skipping instance.")
+            #    #continue
 
             if os.path.isfile(lax_3ch_filename):
                 lax_3ch_seg_nifti = nib.load(lax_3ch_filename)
-            else:
-                logger.error("LAX 3 chamber file not found. Skipping instance.")
-                continue
+            #else:
+            #    logger.error("LAX 3 chamber file not found. Skipping instance.")
+            #    #continue
 
             if os.path.isfile(lax_4ch_filename):
                 lax_4ch_seg_nifti = nib.load(lax_4ch_filename)
@@ -1335,8 +1363,11 @@ def main():
 
             # ED frame is assumed to have time frame id = 0. ES time frame is picked automatically
             # based on LV volume.
-            es_frame = auto_pick_es_frame([sax_seg_nifti, lax_2ch_seg_nifti, lax_3ch_seg_nifti,
+            es_frame = auto_pick_es_frame([sax_seg_nifti,
                                            lax_4ch_seg_nifti])
+            
+            #es_frame = auto_pick_es_frame([sax_seg_nifti, lax_2ch_seg_nifti, lax_3ch_seg_nifti,
+            #                               lax_4ch_seg_nifti])
             # if an error was detected in auto es picking, skip the instance
             if es_frame == -1:
                 logger.error(f"{subject_id}: ES picking failed. Skipping instance.")
@@ -1391,139 +1422,146 @@ def main():
                 # ------------
                 # Contours 2CH
                 # ------------
-                lax_2ch_seg = np.squeeze(lax_2ch_seg_nifti.get_fdata()[:, :, :, tf_id])
-                affine_2ch = lax_2ch_seg_nifti.affine
 
-                # Extract contours and landmarks from the 2Ch segmentation image
-                lax_2ch_contours_and_landmarks = (
-                    get_contours_and_landmarks_2ch(lax_2ch_seg, label_defs_2ch, affine_2ch))
+                if lax_2ch_filename is not None and os.path.isfile(lax_2ch_filename):
 
-                if not lax_2ch_contours_and_landmarks:
-                    logger.error(f"{subject_id}: LAX 2 Ch failed QC.")
-                else:
-                    lv_endo_contour, lv_epi_contour, mv_1, mv_2, apex = (
-                        lax_2ch_contours_and_landmarks)
+                    lax_2ch_seg = np.squeeze(lax_2ch_seg_nifti.get_fdata()[:, :, :, tf_id])
+                    affine_2ch = lax_2ch_seg_nifti.affine
 
-                    # # Visualization for DEBUG: 2Ch LV contours
-                    # plt.imshow(lax_2ch_seg)
-                    # plt.scatter(lv_endo_contour[:, 1], lv_endo_contour[:, 0], marker="x", color="red",
-                    #             s=100)
-                    # plt.scatter(lv_epi_contour[:, 1], lv_epi_contour[:, 0], marker="o", color="blue",
-                    #             s=50)
-                    # plt.show()
-                    #
-                    # # Visualization for DEBUG: 2Ch LV landmarks
-                    # plt.imshow(lax_2ch_seg)
-                    # plt.scatter(mv_anterior[1], mv_anterior[0], marker="+", color="red", s=100)
-                    # plt.scatter(mv_posterior[1], mv_posterior[0], marker="o", color="red", s=50)
-                    # plt.scatter(apex[1], apex[0], marker="+", color="blue", s=100)
-                    # plt.show()
+                    # Extract contours and landmarks from the 2Ch segmentation image
+                    lax_2ch_contours_and_landmarks = (
+                        get_contours_and_landmarks_2ch(lax_2ch_seg, label_defs_2ch, affine_2ch))
 
-                    # write contours to gp points file
-                    write_contour_to_gp_points_file(gp_points_file, lv_endo_contour, affine_2ch,
-                                                    'LAX_LV_ENDOCARDIAL', slice_id=0,
-                                                    frame_id=frame_id,
-                                                    weight=1, time_frame_id=tf_id + 1)
-                    write_contour_to_gp_points_file(gp_points_file, lv_epi_contour, affine_2ch,
-                                                    'LAX_LV_EPICARDIAL', slice_id=0,
-                                                    frame_id=frame_id,
-                                                    weight=1, time_frame_id=tf_id + 1)
-                    # write landmarks to gp points file
-                    write_contour_to_gp_points_file(gp_points_file, mv_1, affine_2ch,
-                                                    'MITRAL_VALVE', slice_id=0, frame_id=frame_id,
-                                                    weight=1, time_frame_id=tf_id + 1)
-                    write_contour_to_gp_points_file(gp_points_file, mv_2, affine_2ch,
-                                                    'MITRAL_VALVE', slice_id=0, frame_id=frame_id,
-                                                    weight=1, time_frame_id=tf_id + 1)
-                    write_contour_to_gp_points_file(gp_points_file, apex, affine_2ch,
-                                                    'APEX_POINT', slice_id=0, frame_id=frame_id,
-                                                    weight=1, time_frame_id=tf_id + 1)
+                    if not lax_2ch_contours_and_landmarks:
+                        logger.error(f"{subject_id}: LAX 2 Ch failed QC.")
+                    else:
+                        lv_endo_contour, lv_epi_contour, mv_1, mv_2, apex = (
+                            lax_2ch_contours_and_landmarks)
 
-                # write the frame's info to gp info file
-                write_to_gp_frame_info_file(gp_frame_info_file, frame_id, time_frame_id=tf_id + 1,
-                                            header=lax_2ch_seg_nifti.header, slice_info='2Ch')
+                        # # Visualization for DEBUG: 2Ch LV contours
+                        # plt.imshow(lax_2ch_seg)
+                        # plt.scatter(lv_endo_contour[:, 1], lv_endo_contour[:, 0], marker="x", color="red",
+                        #             s=100)
+                        # plt.scatter(lv_epi_contour[:, 1], lv_epi_contour[:, 0], marker="o", color="blue",
+                        #             s=50)
+                        # plt.show()
+                        #
+                        # # Visualization for DEBUG: 2Ch LV landmarks
+                        # plt.imshow(lax_2ch_seg)
+                        # plt.scatter(mv_anterior[1], mv_anterior[0], marker="+", color="red", s=100)
+                        # plt.scatter(mv_posterior[1], mv_posterior[0], marker="o", color="red", s=50)
+                        # plt.scatter(apex[1], apex[0], marker="+", color="blue", s=100)
+                        # plt.show()
 
-                # increase frame_id by 1 after processing each slice
-                frame_id += 1
+                        # write contours to gp points file
+                        write_contour_to_gp_points_file(gp_points_file, lv_endo_contour, affine_2ch,
+                                                        'LAX_LV_ENDOCARDIAL', slice_id=0,
+                                                        frame_id=frame_id,
+                                                        weight=1, time_frame_id=tf_id + 1)
+                        write_contour_to_gp_points_file(gp_points_file, lv_epi_contour, affine_2ch,
+                                                        'LAX_LV_EPICARDIAL', slice_id=0,
+                                                        frame_id=frame_id,
+                                                        weight=1, time_frame_id=tf_id + 1)
+                        # write landmarks to gp points file
+                        write_contour_to_gp_points_file(gp_points_file, mv_1, affine_2ch,
+                                                        'MITRAL_VALVE', slice_id=0, frame_id=frame_id,
+                                                        weight=1, time_frame_id=tf_id + 1)
+                        write_contour_to_gp_points_file(gp_points_file, mv_2, affine_2ch,
+                                                        'MITRAL_VALVE', slice_id=0, frame_id=frame_id,
+                                                        weight=1, time_frame_id=tf_id + 1)
+                        write_contour_to_gp_points_file(gp_points_file, apex, affine_2ch,
+                                                        'APEX_POINT', slice_id=0, frame_id=frame_id,
+                                                        weight=1, time_frame_id=tf_id + 1)
 
-                logger.info("2Ch processing done!")
+                    # write the frame's info to gp info file
+                    write_to_gp_frame_info_file(gp_frame_info_file, frame_id, time_frame_id=tf_id + 1,
+                                                header=lax_2ch_seg_nifti.header, slice_info='2Ch')
+
+                    # increase frame_id by 1 after processing each slice
+                    frame_id += 1
+
+                    logger.info("2Ch processing done!")
 
                 # ------------
                 # Contours 3CH
                 # ------------
-                lax_3ch_seg = np.squeeze(lax_3ch_seg_nifti.get_fdata()[:, :, :, tf_id])
-                affine_3ch = lax_3ch_seg_nifti.affine
+    
+                if lax_3ch_filename is not None and os.path.isfile(lax_3ch_filename):
+                    logger.info(f"{subject_id}: LAX 3 Ch file found. Processing 3Ch.")
 
-                # Extract contours and landmarks from the 3Ch segmentation image
-                lax_3ch_contours_and_landmarks = (
-                    get_contours_and_landmarks_3ch(lax_3ch_seg, label_defs_3ch, affine_3ch))
+                    lax_3ch_seg = np.squeeze(lax_3ch_seg_nifti.get_fdata()[:, :, :, tf_id])
+                    affine_3ch = lax_3ch_seg_nifti.affine
 
-                if not lax_3ch_contours_and_landmarks:
-                    logger.error(f"{subject_id}: LAX 3 Ch failed QC.")
-                else:
-                    (lv_endo_contour, lv_epi_contour, aorta_1, aorta_2, mv_1, mv_2,
-                     rv_septum_contour, rv_free_wall_contour) = lax_3ch_contours_and_landmarks
+                    # Extract contours and landmarks from the 3Ch segmentation image
+                    lax_3ch_contours_and_landmarks = (
+                        get_contours_and_landmarks_3ch(lax_3ch_seg, label_defs_3ch, affine_3ch))
 
-                    # # Visualization for DEBUG: 3Ch contours
-                    # plt.imshow(lax_3ch_seg)
-                    # plt.scatter(lv_endo_contour[:, 1], lv_endo_contour[:, 0], marker="x",
-                    #             color="red", s=100)
-                    # plt.scatter(lv_epi_contour[:, 1], lv_epi_contour[:, 0], marker="o", color="blue",
-                    #             s=50)
-                    # if rv_septum_contour is not None and rv_free_wall_contour is not None:
-                    #     plt.scatter(rv_septum_contour[:, 1], rv_septum_contour[:, 0], marker="+",
-                    #                 color="green", s=100)
-                    #     plt.scatter(rv_free_wall_contour[:, 1], rv_free_wall_contour[:, 0], marker="*",
-                    #                 color="yellow", s=50)
-                    # plt.show()
+                    if not lax_3ch_contours_and_landmarks:
+                        logger.error(f"{subject_id}: LAX 3 Ch failed QC.")
+                    else:
+                        (lv_endo_contour, lv_epi_contour, aorta_1, aorta_2, mv_1, mv_2,
+                        rv_septum_contour, rv_free_wall_contour) = lax_3ch_contours_and_landmarks
 
-                    # # Visualization for DEBUG: 3Ch landmarks
-                    # plt.imshow(lax_3ch_seg)
-                    # plt.scatter(aorta_posterior[1], aorta_posterior[0], marker="x", color="red", s=100)
-                    # plt.scatter(aorta_anterior[1], aorta_anterior[0], marker="o", color="red", s=50)
-                    # plt.scatter(mv_point[1], mv_point[0], marker="*", color="blue", s=100)
-                    # plt.show()
+                        # # Visualization for DEBUG: 3Ch contours
+                        # plt.imshow(lax_3ch_seg)
+                        # plt.scatter(lv_endo_contour[:, 1], lv_endo_contour[:, 0], marker="x",
+                        #             color="red", s=100)
+                        # plt.scatter(lv_epi_contour[:, 1], lv_epi_contour[:, 0], marker="o", color="blue",
+                        #             s=50)
+                        # if rv_septum_contour is not None and rv_free_wall_contour is not None:
+                        #     plt.scatter(rv_septum_contour[:, 1], rv_septum_contour[:, 0], marker="+",
+                        #                 color="green", s=100)
+                        #     plt.scatter(rv_free_wall_contour[:, 1], rv_free_wall_contour[:, 0], marker="*",
+                        #                 color="yellow", s=50)
+                        # plt.show()
 
-                    # write contours to gp points file
-                    write_contour_to_gp_points_file(gp_points_file, lv_endo_contour, affine_3ch,
-                                                    'LAX_LV_ENDOCARDIAL', slice_id=0,
-                                                    frame_id=frame_id,
-                                                    weight=1, time_frame_id=tf_id + 1)
-                    write_contour_to_gp_points_file(gp_points_file, lv_epi_contour, affine_3ch,
-                                                    'LAX_LV_EPICARDIAL', slice_id=0,
-                                                    frame_id=frame_id,
-                                                    weight=1, time_frame_id=tf_id + 1)
+                        # # Visualization for DEBUG: 3Ch landmarks
+                        # plt.imshow(lax_3ch_seg)
+                        # plt.scatter(aorta_posterior[1], aorta_posterior[0], marker="x", color="red", s=100)
+                        # plt.scatter(aorta_anterior[1], aorta_anterior[0], marker="o", color="red", s=50)
+                        # plt.scatter(mv_point[1], mv_point[0], marker="*", color="blue", s=100)
+                        # plt.show()
 
-                    if rv_septum_contour is not None:
-                        write_contour_to_gp_points_file(gp_points_file, rv_septum_contour,
-                                                        affine_3ch,
-                                                        'LAX_RV_SEPTUM', slice_id=0,
+                        # write contours to gp points file
+                        write_contour_to_gp_points_file(gp_points_file, lv_endo_contour, affine_3ch,
+                                                        'LAX_LV_ENDOCARDIAL', slice_id=0,
                                                         frame_id=frame_id,
                                                         weight=1, time_frame_id=tf_id + 1)
-                    if rv_free_wall_contour is not None:
-                        write_contour_to_gp_points_file(gp_points_file, rv_free_wall_contour,
-                                                        affine_3ch,
-                                                        'LAX_RV_FREEWALL', slice_id=0,
+                        write_contour_to_gp_points_file(gp_points_file, lv_epi_contour, affine_3ch,
+                                                        'LAX_LV_EPICARDIAL', slice_id=0,
                                                         frame_id=frame_id,
                                                         weight=1, time_frame_id=tf_id + 1)
 
-                    # write landmarks to gp points file
-                    write_contour_to_gp_points_file(gp_points_file, mv_1, affine_3ch,
-                                                    'MITRAL_VALVE', slice_id=0, frame_id=frame_id,
-                                                    weight=1, time_frame_id=tf_id + 1)
-                    write_contour_to_gp_points_file(gp_points_file, mv_2, affine_3ch,
-                                                    'MITRAL_VALVE', slice_id=0, frame_id=frame_id,
-                                                    weight=1, time_frame_id=tf_id + 1)
-                    write_contour_to_gp_points_file(gp_points_file, aorta_1, affine_3ch,
-                                                    'AORTA_VALVE', slice_id=0, frame_id=frame_id,
-                                                    weight=1, time_frame_id=tf_id + 1)
-                    write_contour_to_gp_points_file(gp_points_file, aorta_2, affine_3ch,
-                                                    'AORTA_VALVE', slice_id=0, frame_id=frame_id,
-                                                    weight=1, time_frame_id=tf_id + 1)
+                        if rv_septum_contour is not None:
+                            write_contour_to_gp_points_file(gp_points_file, rv_septum_contour,
+                                                            affine_3ch,
+                                                            'LAX_RV_SEPTUM', slice_id=0,
+                                                            frame_id=frame_id,
+                                                            weight=1, time_frame_id=tf_id + 1)
+                        if rv_free_wall_contour is not None:
+                            write_contour_to_gp_points_file(gp_points_file, rv_free_wall_contour,
+                                                            affine_3ch,
+                                                            'LAX_RV_FREEWALL', slice_id=0,
+                                                            frame_id=frame_id,
+                                                            weight=1, time_frame_id=tf_id + 1)
 
-                # write the frame's info to gp info file
-                write_to_gp_frame_info_file(gp_frame_info_file, frame_id, time_frame_id=tf_id + 1,
-                                            header=lax_3ch_seg_nifti.header, slice_info='3Ch')
+                        # write landmarks to gp points file
+                        write_contour_to_gp_points_file(gp_points_file, mv_1, affine_3ch,
+                                                        'MITRAL_VALVE', slice_id=0, frame_id=frame_id,
+                                                        weight=1, time_frame_id=tf_id + 1)
+                        write_contour_to_gp_points_file(gp_points_file, mv_2, affine_3ch,
+                                                        'MITRAL_VALVE', slice_id=0, frame_id=frame_id,
+                                                        weight=1, time_frame_id=tf_id + 1)
+                        write_contour_to_gp_points_file(gp_points_file, aorta_1, affine_3ch,
+                                                        'AORTA_VALVE', slice_id=0, frame_id=frame_id,
+                                                        weight=1, time_frame_id=tf_id + 1)
+                        write_contour_to_gp_points_file(gp_points_file, aorta_2, affine_3ch,
+                                                        'AORTA_VALVE', slice_id=0, frame_id=frame_id,
+                                                        weight=1, time_frame_id=tf_id + 1)
+
+                    # write the frame's info to gp info file
+                    write_to_gp_frame_info_file(gp_frame_info_file, frame_id, time_frame_id=tf_id + 1,
+                                                header=lax_3ch_seg_nifti.header, slice_info='3Ch')
 
                 # increase frame_id by 1 after processing each slice
                 frame_id += 1
@@ -1544,7 +1582,7 @@ def main():
                     logger.error(f"{subject_id}: LAX 4 Ch failed QC.")
                 else:
                     (lv_endo_contour, lv_epi_contour, rv_septum_contour, rv_free_wall_contour,
-                     mv_left, mv_right, tv_left, tv_right) = lax_4ch_contours_and_landmarks
+                     mv_left, mv_right, tv_left, tv_right, apex) = lax_4ch_contours_and_landmarks
 
                     # # Visualization for DEBUG: 4Ch LV, RV contours
                     # plt.imshow(lax_4ch_seg)
@@ -1599,6 +1637,10 @@ def main():
                                                     'TRICUSPID_VALVE', slice_id=0,
                                                     frame_id=frame_id,
                                                     weight=1, time_frame_id=tf_id + 1)
+                    if not os.path.isfile(lax_2ch_filename):
+                        write_contour_to_gp_points_file(gp_points_file, apex, affine_4ch,
+                                                        'APEX_POINT', slice_id=0, frame_id=frame_id,
+                                                        weight=1, time_frame_id=tf_id + 1)
 
                 # write the frame's info to gp info file
                 write_to_gp_frame_info_file(gp_frame_info_file, frame_id, time_frame_id=tf_id + 1,
@@ -1627,7 +1669,7 @@ def main():
                     if not sax_contours:
                         sax_slices_qc_fail_count += 1
                     else:
-                        lv_endo_contour, lv_epi_contour, rv_septum_contour, rv_free_wall_contour = \
+                        lv_endo_contour, lv_epi_contour, rv_septum_contour, rv_free_wall_contour, rv_insert_contour = \
                             sax_contours
 
                         # # Visualization for DEBUG: SAX contours
@@ -1660,6 +1702,11 @@ def main():
                         write_contour_to_gp_points_file(gp_points_file, rv_free_wall_contour,
                                                         affine_sax,
                                                         'SAX_RV_FREEWALL', slice_id=slice_id,
+                                                        frame_id=frame_id, weight=1,
+                                                        time_frame_id=tf_id + 1)
+                        write_contour_to_gp_points_file(gp_points_file, rv_insert_contour,
+                                                        affine_sax,
+                                                        'RV_INSERT', slice_id=slice_id,
                                                         frame_id=frame_id, weight=1,
                                                         time_frame_id=tf_id + 1)
 

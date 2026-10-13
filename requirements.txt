@@ -1,12 +1,12 @@
 cvxopt
 line_profiler
-matplotlib
+matplotlib==3.7.3
 nibabel
 nltk
 nnunetv2
 numpy
 opencv-python
-pandas
+pandas==2.2
 plotly
 pydicom
 pyvista
